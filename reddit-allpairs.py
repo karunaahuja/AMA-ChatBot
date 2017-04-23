@@ -1,15 +1,9 @@
+#!/bin/python3
 
-# coding: utf-8
-# PRAW: https://praw.readthedocs.io/en/latest/
-#! pip install --upgrade pip
-#! pip install praw
-#! pip install --upgrade praw
-#! pip install nltk
-# In[44]:
-
-import json
+import sys
 import praw
-import logging
+#import json
+#import logging
 
 # uncomment to turn on logging and debug PRAW requests to Reddit API
 # handler = logging.StreamHandler()
@@ -17,33 +11,6 @@ import logging
 # logger = logging.getLogger('prawcore')
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
-
-
-# In[45]:
-
-questions_file = 'science-questions.txt'
-answers_file = 'science-answers.txt'
-
-
-# get a read-only Reddit instance
-reddit = praw.Reddit(client_id=my_cli_id,
-                     client_secret=my_cli_secret,
-                     user_agent=my_user_agent)
-print(reddit.read_only)
-
-
-# In[48]:
-
-# get a subreddit
-# subreddit = reddit.subreddit('askscience')
-subreddit = reddit.subreddit('askscience')
-
-print(subreddit.display_name)  # Output: redditdev
-print(subreddit.title)         # Output: reddit Development
-# print(subreddit.description)   # Output: A subreddit for discussion of ...
-
-
-# In[49]:
 
 def replace_newlines(content):
     return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
@@ -111,14 +78,41 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
     return submission_count, total_qa_count
 
 
-# In[54]:
+def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name):
 
-# science_submissions, science_estimate = get_question_answer_pairs('flair:science', qa_pairs_file)
-num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file)
-print(num_submissions, qa_count)
+    my_cli_id = reddit_cli_id
+    my_cli_secret = reddit_cli_secret
+    my_user_agent = ''.join(['python:AskMeAboutX:v0.1.0 (by /u/', reddit_uname, ')'])
+
+    questions_file = ''.join([subreddit_name, '-questions.txt'])
+    answers_file = ''.join([subreddit_name, '-answers.txt'])
+
+    # get a read-only Reddit instance
+    reddit = praw.Reddit(client_id=my_cli_id,
+                         client_secret=my_cli_secret,
+                         user_agent=my_user_agent)
+    print(reddit.read_only)
+
+    # get a subreddit
+    subreddit = reddit.subreddit(subreddit_name)
+
+    print(subreddit.display_name)  # Output: redditdev
+    print(subreddit.title)         # Output: reddit Development
+    # print(subreddit.description)   # Output: A subreddit for discussion of ...
 
 
-# In[ ]:
+    num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file)
+    print(num_submissions, qa_count)
+
+if __name__ == '__main__':
+    if len(sys.argv) != 5:
+        print('usage: python3 reddit-allpairs.py <reddit username> <reddit OAuth client ID> <reddit OAuth secret> <subreddit name>')
+    else:
+        reddit_name = sys.argv[1]
+        reddit_id = sys.argv[2]
+        reddit_secret = sys.argv[3]
+        subreddit_name = sys.argv[4]
+        main(reddit_name, reddit_id, reddit_secret, subreddit_name)
 
 
 

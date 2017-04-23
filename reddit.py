@@ -15,15 +15,44 @@ import praw
 questions_file = 'science-technology-questions.txt'
 answers_file = 'science-technology-answers.txt'
 
+def replace_newlines(content):
+    return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+
+def truncate(content, limit):
+    words_lst = content.split(' ')
+    if len(words_lst) > 20:
+        return ' '.join(words_lst[0:limit])
+    else:
+        return content
+
+def write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+    if question not in blacklist and answer not in blacklist:
+        # replace all newlines with space
+        question = replace_newlines(question)
+        answer = replace_newlines(answer)
+        question_trunc = truncate(question, 20)
+        answer_trunc = truncate(answer, 20)
+        # write question and answer to separate text files, one per line
+        with open(questions_file, mode='a') as fq:
+            fq.write(question_trunc + '\n')
+        with open(answers_file, mode='a') as fa:
+            fa.write(answer_trunc + '\n')
+        return True
+    return False
+
 def get_question_answer_pairs(subreddit, query_str, questions_file, answers_file):
+    blacklist = set(['[deleted]', '[removed]'])
+
     # get submissions in a subreddit
     submission_count = 0
     estimate_data = {} # dict: submission number-> number of question-answer pairs
     # sort by: relevance, hot, top, new, or comments
+    total_qa_count = 0
     for submission in subreddit.search(syntax='lucene', query=query_str, sort='comments', limit=1000):
         submission_count += 1
         if submission_count % 100 == 0:
-            print(submission_count, submission.title, submission.url, ', author:', submission.author)
+#             print(submission_count, submission.title, submission.url, ', author:', submission.author)
+            print(total_qa_count, submission_count, submission.title)
 
         submission_author = submission.author
         submission.comments.replace_more(limit=0)
@@ -37,27 +66,11 @@ def get_question_answer_pairs(subreddit, query_str, questions_file, answers_file
                 answer_author = reply.author
                 if answer_author == submission_author:
                     answer = reply.body
-                    # replace all newlines with space
-                    question = question.replace('\r\n', ' ')
-                    answer = answer.replace('\r\n', ' ')
-                    question = question.replace('\r', ' ')
-                    answer = answer.replace('\r', ' ')
-                    question = question.replace('\n', ' ')
-                    answer = answer.replace('\n', ' ')
-                    # write question and answer to separate text files, one per line
-                    with open(questions_file, mode='a') as fq:
-                        fq.write(question + '\n')
-                    with open(answers_file, mode='a') as fa:
-                        fa.write(answer + '\n')
-                    question_answer_pairs_count += 1
-        estimate_data[submission_count] =  question_answer_pairs_count
-    return submission_count, estimate_data
+                    if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+                        question_answer_pairs_count += 1
 
-def sum_estimate_data(data):
-    estimate_pairs = 0
-    for sub in data:
-        estimate_pairs += data[sub]
-    return estimate_pairs
+        total_qa_count += question_answer_pairs_count
+    return submission_count, total_qa_count
 
 def main(reddit_uname, reddit_cli_id, reddit_cli_secret):
     my_cli_id = reddit_cli_id
@@ -73,27 +86,18 @@ def main(reddit_uname, reddit_cli_id, reddit_cli_secret):
     # get a subreddit
     subreddit = reddit.subreddit('IAmA')
 
-    print(subreddit.display_name)  # Output: redditdev
-    print(subreddit.title)         # Output: reddit Development
-    # print(subreddit.description)   # Output: A subreddit for discussion of ...
+    print(subreddit.display_name)
+    print(subreddit.title)
 
     # TODO: check if questions_file, answers_file already exist, if so delete them
 
-    science_submissions, science_estimate = get_question_answer_pairs(subreddit, 'flair:science', questions_file, answers_file)
-    science_qa_count = sum_estimate_data(science_estimate)
-    science_submissions, science_qa_count
+    num_submissions_science, qa_count_science = get_question_answer_pairs(subreddit, 'flair:science', questions_file, answers_file)
 
-    tech_submissions, tech_estimate = get_question_answer_pairs(subreddit, 'flair:technology', questions_file, answers_file)
-    tech_qa_count = sum_estimate_data(tech_estimate)
-    tech_submissions, tech_qa_count
+    num_submissions_tech, qa_count_tech = get_question_answer_pairs(subreddit, 'flair:technology', questions_file, answers_file)
 
-    # music_submissions, music_estimate = get_question_answer_pairs(subreddit, 'flair:music', questions_file, answers_file)
-    # music_qa_count = sum_estimate_data(music_estimate)
-    # music_submissions, music_qa_count
-
-    total_submissions = science_submissions + tech_submissions #  + music_submissions
-    total_qa_pairs = science_qa_count + tech_qa_count #  + music_qa_count
-    total_submissions, total_qa_pairs
+    total_submissions = num_submissions_science + num_submissions_tech
+    total_qa_pairs = qa_count_science + qa_count_tech
+    print(total_submissions, total_qa_pairs)
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:

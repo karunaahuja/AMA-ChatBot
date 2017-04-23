@@ -21,20 +21,9 @@ import logging
 
 # In[45]:
 
-questions_file = 'askscience-questions.txt'
-answers_file = 'askscience-answers.txt'
+questions_file = 'science-questions.txt'
+answers_file = 'science-answers.txt'
 
-
-# # Retrieving data using Reddit API and PRAW wrapper
-
-# In[46]:
-
-my_cli_id = 'P3LozozA5KXU4g'
-my_cli_secret = 'FYwAshkIUWO0c9KHqbNyuycLVg4'
-my_user_agent = 'python:AskMeAboutX:v0.1.0 (by /u/dimro)'
-
-
-# In[47]:
 
 # get a read-only Reddit instance
 reddit = praw.Reddit(client_id=my_cli_id,
@@ -59,18 +48,12 @@ print(subreddit.title)         # Output: reddit Development
 def replace_newlines(content):
     return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
 
-
-# In[50]:
-
 def truncate(content, limit):
     words_lst = content.split(' ')
     if len(words_lst) > 20:
         return ' '.join(words_lst[0:limit])
     else:
         return content
-
-
-# In[51]:
 
 def write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
     if question not in blacklist and answer not in blacklist:
@@ -86,9 +69,6 @@ def write_to_qa_files(question, answer, questions_file, answers_file, blacklist)
             fa.write(answer_trunc + '\n')
         return True
     return False
-
-
-# In[53]:
 
 def get_question_answer_pairs(subreddit, questions_file, answers_file):
     blacklist = set(['[deleted]', '[removed]'])

@@ -44,7 +44,7 @@ else:
   answers_train_file = ''.join([root, '-answers-train.txt'])
   write_list_to_file(questions_train_file, questions_train)
   write_list_to_file(answers_train_file, answers_train)
-  
+
   max_ind_val = max_ind_train + int((num_pairs - max_ind_train)/2)
   questions_val = shuf_q[max_ind_train:max_ind_val]
   answers_val = shuf_a[max_ind_train:max_ind_val]

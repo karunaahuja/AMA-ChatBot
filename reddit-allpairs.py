@@ -2,6 +2,7 @@
 
 import sys
 import praw
+import string
 #import json
 #import logging
 
@@ -15,7 +16,7 @@ import praw
 TRUNC_WORDS_LIMIT = 50
 
 def replace_newlines(content):
-    return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ').replace('-', ' ')
 
 def truncate(content, limit):
     words_lst = content.split(' ')
@@ -24,18 +25,24 @@ def truncate(content, limit):
     else:
         return content
 
+def normalize(content):
+    content = ''.join([ch for ch in content if ch not in string.punctuation])
+    return content.lower()
+
 def write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
     if question not in blacklist and answer not in blacklist:
         # replace all newlines with space
         question = replace_newlines(question)
         answer = replace_newlines(answer)
-        question_trunc = truncate(question, TRUNC_WORDS_LIMIT).lower()
-        answer_trunc = truncate(answer, TRUNC_WORDS_LIMIT).lower()
+        question = truncate(question, TRUNC_WORDS_LIMIT)
+        answer = truncate(answer, TRUNC_WORDS_LIMIT)
+        question = normalize(question)
+        answer= normalize(answer)
         # write question and answer to separate text files, one per line
         with open(questions_file, mode='a') as fq:
-            fq.write(question_trunc + '\n')
+            fq.write(question + '\n')
         with open(answers_file, mode='a') as fa:
-            fa.write(answer_trunc + '\n')
+            fa.write(answer + '\n')
         return True
     return False
 

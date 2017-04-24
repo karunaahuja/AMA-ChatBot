@@ -13,8 +13,6 @@ import string
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
 
-# TODO: add exception handling for when reddit returns http status 503
-
 TRUNC_WORDS_LIMIT = 50
 
 def replace_newlines(content):
@@ -54,33 +52,44 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
     # get submissions in a subreddit
     submission_count = 0
     total_qa_count = 0
-    for submission in subreddit.submissions(start=0):
-        submission_count += 1
-        if submission_count % 100 == 0:
-            print(total_qa_count, submission_count, submission.title)
-
-        submission.comments.replace_more(limit=0)
-        top_level_comments = list(submission.comments)
-        question_answer_pairs_count = 0
-        question = submission.title
-        if len(top_level_comments) > 0:
-            top_comment = top_level_comments[0]
-            answer = top_comment.body
-            if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
-                question_answer_pairs_count += 1
-        # get all comment-reply pairs
-        comment_queue = top_level_comments # Seed with top-level
-        while comment_queue:
-            comment = comment_queue.pop(0)
-            comment_queue.extend(comment.replies)
-            question = comment.body
-            if len(comment.replies) > 0:
-                top_reply = comment.replies[0]
-                answer = top_reply.body
-                if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+    submissions = subreddit.submissions(start=0)
+    # for submission in subreddit.submissions(start=0):
+    while True:
+        try:
+            submission = next(submissions)
+            submission.comments.replace_more(limit=0)
+            top_level_comments = list(submission.comments)
+            question_top = submission.title
+            if len(top_level_comments) > 0:
+                top_comment = top_level_comments[0]
+                answer_top = top_comment.body
+        except StopIteration:
+            break
+        except Exception as e:
+            print(e)
+            continue
+        else:
+            submission_count += 1
+            if submission_count % 100 == 0:
+                print(total_qa_count, submission_count, submission.title)
+            question_answer_pairs_count = 0
+            if len(top_level_comments) > 0:
+                if write_to_qa_files(question_top, answer_top, questions_file, answers_file, blacklist):
                     question_answer_pairs_count += 1
+            # get all comment-reply pairs
+            comment_queue = top_level_comments # Seed with top-level
+            while comment_queue:
+                comment = comment_queue.pop(0)
+                comment_queue.extend(comment.replies)
+                question = comment.body
+                if len(comment.replies) > 0:
+                    top_reply = comment.replies[0]
+                    answer = top_reply.body
+                    if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+                        question_answer_pairs_count += 1
 
-        total_qa_count += question_answer_pairs_count
+            total_qa_count += question_answer_pairs_count
+
     return submission_count, total_qa_count
 
 

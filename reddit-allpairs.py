@@ -12,6 +12,8 @@ import praw
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
 
+TRUNC_WORDS_LIMIT = 50
+
 def replace_newlines(content):
     return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
 
@@ -27,8 +29,8 @@ def write_to_qa_files(question, answer, questions_file, answers_file, blacklist)
         # replace all newlines with space
         question = replace_newlines(question)
         answer = replace_newlines(answer)
-        question_trunc = truncate(question, 20)
-        answer_trunc = truncate(answer, 20)
+        question_trunc = truncate(question, TRUNC_WORDS_LIMIT)
+        answer_trunc = truncate(answer, TRUNC_WORDS_LIMIT)
         # write question and answer to separate text files, one per line
         with open(questions_file, mode='a') as fq:
             fq.write(question_trunc + '\n')
@@ -48,21 +50,17 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
     for submission in subreddit.submissions(start=0):
         submission_count += 1
         if submission_count % 100 == 0:
-#             print(submission_count, submission.title, submission.url, ', author:', submission.author)
             print(total_qa_count, submission_count, submission.title)
 
         submission.comments.replace_more(limit=0)
         top_level_comments = list(submission.comments)
         question_answer_pairs_count = 0
         question = submission.title
-        for tl_comment in top_level_comments:
-            answer = tl_comment.body
-            question_answer_pairs_count += 1
-            question = tl_comment.body
-            for reply in tl_comment.replies:
-                answer = reply.body
-                if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
-                    question_answer_pairs_count += 1
+        if len(top_level_comments) > 0:
+            top_comment = top_level_comments[0]
+            answer = top_comment.body
+            if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+                question_answer_pairs_count += 1
         # get all comment-reply pairs
         comment_queue = submission.comments[:]  # Seed with top-level
         while comment_queue:

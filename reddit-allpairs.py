@@ -29,8 +29,8 @@ def write_to_qa_files(question, answer, questions_file, answers_file, blacklist)
         # replace all newlines with space
         question = replace_newlines(question)
         answer = replace_newlines(answer)
-        question_trunc = truncate(question, TRUNC_WORDS_LIMIT)
-        answer_trunc = truncate(answer, TRUNC_WORDS_LIMIT)
+        question_trunc = truncate(question, TRUNC_WORDS_LIMIT).lower()
+        answer_trunc = truncate(answer, TRUNC_WORDS_LIMIT).lower()
         # write question and answer to separate text files, one per line
         with open(questions_file, mode='a') as fq:
             fq.write(question_trunc + '\n')

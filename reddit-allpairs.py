@@ -13,6 +13,8 @@ import string
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
 
+# TODO: add exception handling for when reddit returns http status 503
+
 TRUNC_WORDS_LIMIT = 50
 
 def replace_newlines(content):
@@ -20,7 +22,7 @@ def replace_newlines(content):
 
 def truncate(content, limit):
     words_lst = content.split(' ')
-    if len(words_lst) > 20:
+    if len(words_lst) > limit:
         return ' '.join(words_lst[0:limit])
     else:
         return content
@@ -51,8 +53,6 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
 
     # get submissions in a subreddit
     submission_count = 0
-    estimate_data = {} # dict: submission number-> number of question-answer pairs
-    # sort by: relevance, hot, top, new, or comments
     total_qa_count = 0
     for submission in subreddit.submissions(start=0):
         submission_count += 1
@@ -69,13 +69,14 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
             if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
                 question_answer_pairs_count += 1
         # get all comment-reply pairs
-        comment_queue = submission.comments[:]  # Seed with top-level
+        comment_queue = top_level_comments # Seed with top-level
         while comment_queue:
             comment = comment_queue.pop(0)
             comment_queue.extend(comment.replies)
             question = comment.body
-            for reply in comment.replies:
-                answer = reply.body
+            if len(comment.replies) > 0:
+                top_reply = comment.replies[0]
+                answer = top_reply.body
                 if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
                     question_answer_pairs_count += 1
 
@@ -105,6 +106,7 @@ def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name):
     print(subreddit.title)         # Output: reddit Development
     # print(subreddit.description)   # Output: A subreddit for discussion of ...
 
+    # TODO: check if questions_file, answers_file already exist, if so delete them
 
     num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file)
     print(num_submissions, qa_count)

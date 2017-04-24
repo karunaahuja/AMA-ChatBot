@@ -2,6 +2,7 @@
 
 import sys
 import praw
+import string
 #import logging
 #import json
 
@@ -12,26 +13,36 @@ import praw
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
 
-questions_file = 'science-technology-questions.txt'
-answers_file = 'science-technology-answers.txt'
+# TODO: add exception handling for when reddit returns http status 503
+
+TRUNC_WORDS_LIMIT = 50
+
+questions_file = 'iama-science-technology-questions.txt'
+answers_file = 'iama-science-technology-answers.txt'
 
 def replace_newlines(content):
-    return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ').replace('-', ' ')
 
 def truncate(content, limit):
     words_lst = content.split(' ')
-    if len(words_lst) > 20:
+    if len(words_lst) > limit:
         return ' '.join(words_lst[0:limit])
     else:
         return content
+
+def normalize(content):
+    content = ''.join([ch for ch in content if ch not in string.punctuation])
+    return content.lower()
 
 def write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
     if question not in blacklist and answer not in blacklist:
         # replace all newlines with space
         question = replace_newlines(question)
         answer = replace_newlines(answer)
-        question_trunc = truncate(question, 20)
-        answer_trunc = truncate(answer, 20)
+        question = truncate(question, TRUNC_WORDS_LIMIT)
+        answer = truncate(answer, TRUNC_WORDS_LIMIT)
+        question = normalize(question)
+        answer= normalize(answer)
         # write question and answer to separate text files, one per line
         with open(questions_file, mode='a') as fq:
             fq.write(question_trunc + '\n')

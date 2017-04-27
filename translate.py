@@ -45,7 +45,7 @@ import tensorflow as tf
 import data_utils
 import seq2seq_model
 
-
+tf.logging.set_verbosity(tf.logging.ERROR)
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
@@ -55,8 +55,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 100000, "Question vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 100000, "Answer vocabulary size.")
+tf.app.flags.DEFINE_integer("en_vocab_size", 50000, "Question vocabulary size.")
+tf.app.flags.DEFINE_integer("fr_vocab_size", 50000, "Answer vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/home/ubuntu/data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "/home/ubuntu/checkpoints", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,

@@ -25,12 +25,11 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.models.rnn.translate import data_utils
+import data_utils
 
 
 class Seq2SeqModel(object):
   """Sequence-to-sequence model with attention and for multiple buckets.
-
   This class implements a multi-layer recurrent neural network as encoder,
   and an attention-based decoder. This is the same as the model described in
   this paper: http://arxiv.org/abs/1412.7449 - please look there for details,
@@ -58,7 +57,6 @@ class Seq2SeqModel(object):
                forward_only=False,
                dtype=tf.float32):
     """Create the model.
-
     Args:
       source_vocab_size: size of the source vocabulary.
       target_vocab_size: size of the target vocabulary.
@@ -100,30 +98,37 @@ class Seq2SeqModel(object):
       b = tf.get_variable("proj_b", [self.target_vocab_size], dtype=dtype)
       output_projection = (w, b)
 
-      def sampled_loss(labels, inputs):
+      def sampled_loss(labels, logits):
         labels = tf.reshape(labels, [-1, 1])
         # We need to compute the sampled_softmax_loss using 32bit floats to
         # avoid numerical instabilities.
         local_w_t = tf.cast(w_t, tf.float32)
         local_b = tf.cast(b, tf.float32)
-        local_inputs = tf.cast(inputs, tf.float32)
+        local_inputs = tf.cast(logits, tf.float32)
         return tf.cast(
-            tf.nn.sampled_softmax_loss(local_w_t, local_b, local_inputs, labels,
-                                       num_samples, self.target_vocab_size),
+            tf.nn.sampled_softmax_loss(
+                weights=local_w_t,
+                biases=local_b,
+                labels=labels,
+                inputs=local_inputs,
+                num_sampled=num_samples,
+                num_classes=self.target_vocab_size),
             dtype)
       softmax_loss_function = sampled_loss
 
     # Create the internal multi-layer cell for our RNN.
-    single_cell = tf.contrib.rnn.GRUCell(size)
+    def single_cell():
+      return tf.contrib.rnn.GRUCell(size)
     if use_lstm:
-      single_cell = tf.contrib.rnn.BasicLSTMCell(size)
-    cell = single_cell
+      def single_cell():
+        return tf.contrib.rnn.BasicLSTMCell(size)
+    cell = single_cell()
     if num_layers > 1:
-      cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+      cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(num_layers)])
 
     # The seq2seq function: we use embedding for the input and attention.
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-      return tf.nn.seq2seq.embedding_attention_seq2seq(
+      return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
           encoder_inputs,
           decoder_inputs,
           cell,
@@ -153,7 +158,7 @@ class Seq2SeqModel(object):
 
     # Training outputs and losses.
     if forward_only:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+      self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
           self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
           softmax_loss_function=softmax_loss_function)
@@ -165,7 +170,7 @@ class Seq2SeqModel(object):
               for output in self.outputs[b]
           ]
     else:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+      self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
           self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
@@ -190,7 +195,6 @@ class Seq2SeqModel(object):
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only):
     """Run a step of the model feeding the given inputs.
-
     Args:
       session: tensorflow session to use.
       encoder_inputs: list of numpy int vectors to feed as encoder inputs.
@@ -198,11 +202,9 @@ class Seq2SeqModel(object):
       target_weights: list of numpy float vectors to feed as target weights.
       bucket_id: which bucket of the model to use.
       forward_only: whether to do the backward step or only forward.
-
     Returns:
       A triple consisting of gradient norm (or None if we did not do backward),
       average perplexity, and the outputs.
-
     Raises:
       ValueError: if length of encoder_inputs, decoder_inputs, or
         target_weights disagrees with bucket size for the specified bucket_id.
@@ -249,16 +251,13 @@ class Seq2SeqModel(object):
 
   def get_batch(self, data, bucket_id):
     """Get a random batch of data from the specified bucket, prepare for step.
-
     To feed data in step(..) it must be a list of batch-major vectors, while
     data here contains single length-major cases. So the main logic of this
     function is to re-index data cases to be in the proper format for feeding.
-
     Args:
       data: a tuple of size len(self.buckets) in which each element contains
         lists of pairs of input and output data that we use to create a batch.
       bucket_id: integer, which bucket to get the batch for.
-
     Returns:
       The triple (encoder_inputs, decoder_inputs, target_weights) for
       the constructed batch that has the proper format to call step(...) later.

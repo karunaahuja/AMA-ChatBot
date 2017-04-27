@@ -74,8 +74,8 @@ def gunzip_file(gz_path, new_path):
 
 def get_wmt_enfr_train_set(directory):
   """Download the WMT en-fr training corpus to directory unless it's there."""
-  train_path = os.path.join(directory, "giga-fren.release2.fixed")
-  if not (gfile.Exists(train_path +".fr") and gfile.Exists(train_path +".en")):
+  train_path = os.path.join(directory, "ama")
+  if not (gfile.Exists(train_path +"_a.txt") and gfile.Exists(train_path +"_q.txt")):
     #corpus_file = maybe_download(directory, "training-giga-fren.tar",
      #                            _WMT_ENFR_TRAIN_URL)
     #print("Extracting tar file %s" % corpus_file)
@@ -92,7 +92,7 @@ def get_wmt_enfr_train_set(directory):
 
 def get_wmt_enfr_dev_set(directory):
   """Download the WMT en-fr training corpus to directory unless it's there."""
-  dev_name = "ama"
+  dev_name = "dev"
   dev_path = os.path.join(directory, dev_name)
   if not (gfile.Exists(dev_path + "_a.txt") and gfile.Exists(dev_path + "_q.txt")):
     #dev_file = maybe_download(directory, "dev-v2.tgz", _WMT_ENFR_DEV_URL)
@@ -154,6 +154,7 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
           else:
             vocab[word] = 1
       vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
+      print(vocab_list[0:12])
       if len(vocab_list) > max_vocabulary_size:
         vocab_list = vocab_list[:max_vocabulary_size]
       with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
@@ -184,7 +185,7 @@ def initialize_vocabulary(vocabulary_path):
     rev_vocab = []
     with gfile.GFile(vocabulary_path, mode="rb") as f:
       rev_vocab.extend(f.readlines())
-    rev_vocab = [line.strip() for line in rev_vocab]
+    rev_vocab = [bytes(line.strip(),'utf-8') for line in rev_vocab]
     vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
     return vocab, rev_vocab
   else:
@@ -214,6 +215,7 @@ def sentence_to_token_ids(sentence, vocabulary,
     words = tokenizer(sentence)
   else:
     words = basic_tokenizer(sentence)
+    #print (words)
   if not normalize_digits:
     return [vocabulary.get(w, UNK_ID) for w in words]
   # Normalize digits by 0 before looking words up in the vocabulary.
@@ -221,7 +223,7 @@ def sentence_to_token_ids(sentence, vocabulary,
 
 
 def data_to_token_ids(data_path, target_path, vocabulary_path,
-                      tokenizer=None, normalize_digits=True):
+                      tokenizer=None, normalize_digits=False):
   """Tokenize data file and turn into token-ids using given vocabulary file.
 
   This function loads data line-by-line from data_path, calls the above
@@ -238,13 +240,13 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
   """
   if not gfile.Exists(target_path):
     print("Tokenizing data in %s" % data_path)
-    vocab, _ = initialize_vocabulary(vocabulary_path)
+    vocab, rev_vocab = initialize_vocabulary(vocabulary_path)
     with gfile.GFile(data_path, mode="rb") as data_file:
       with gfile.GFile(target_path, mode="w") as tokens_file:
         counter = 0
         for line in data_file:
           counter += 1
-          if counter % 100000 == 0:
+          if counter % 10000 == 0:
             print("  tokenizing line %d" % counter)
           token_ids = sentence_to_token_ids(tf.compat.as_bytes(line), vocab,
                                             tokenizer, normalize_digits)
@@ -279,45 +281,25 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size, tokenizer
   q_dev_path = dev_path +'_q.txt'
   a_dev_path = dev_path + '_a.txt'
 
-  return prepare_data (data_dir, q_train_path, a_train_path, q_dev_path, en_vocabulary_size, fr_vocabulary_size, tokenizer)
+  return prepare_data (data_dir, q_train_path, a_train_path, q_dev_path, a_dev_path, en_vocabulary_size, fr_vocabulary_size, tokenizer)
 
-def prepare_data(data_dirm q_train_path, a_train_path, q_dev_path, a_dev_path, q_vocabulary_size, to_vocabulary_size, tokenizer = None):
-"""Get WMT data into data_dir, create vocabularies and tokenize data.
-
-  Args:
-    data_dir: directory in which the data sets will be stored.
-    en_vocabulary_size: size of the English vocabulary to create and use.
-    fr_vocabulary_size: size of the French vocabulary to create and use.
-    tokenizer: a function to use to tokenize each data sentence;
-      if None, basic_tokenizer will be used.
-
-  Returns:
-    A tuple of 6 elements:
-      (1) path to the token-ids for English training data-set,
-      (2) path to the token-ids for French training data-set,
-      (3) path to the token-ids for English development data-set,
-      (4) path to the token-ids for French development data-set,
-      (5) path to the English vocabulary file,
-      (6) path to the French vocabulary file.
-  """
-
-
+def prepare_data(data_dir, q_train_path, a_train_path, q_dev_path, a_dev_path, en_vocab_size, fr_vocab_size, tokenizer = None):
 
   # Create vocabularies of the appropriate sizes.
-  a_vocab_path = os.path.join(data_dir, "vocab%d.fr" % a_vocabulary_size)
-  q_vocab_path = os.path.join(data_dir, "vocab%d.en" % q_vocabulary_size))
-  create_vocabulary(a_vocab_path, a_train_path, a_vocabulary_size, tokenizer)
-  create_vocabulary(q_vocab_path, q_train_path , q_vocabulary_size, tokenizer)
+  a_vocab_path = os.path.join(data_dir, "vocab%d.q" % fr_vocab_size)
+  q_vocab_path = os.path.join(data_dir, "vocab%d.a" % en_vocab_size)
+  create_vocabulary(a_vocab_path, a_train_path, fr_vocab_size, tokenizer)
+  create_vocabulary(q_vocab_path, q_train_path , en_vocab_size, tokenizer)
 
   # Create token ids for the training data.
-  a_train_ids_path = a_train_path + (".ids%d" % a_vocabulary_size)
-  q_train_ids_path = q_train_path + (".ids%d" % q_vocabulary_size)
+  a_train_ids_path = a_train_path + (".ids%d" % fr_vocab_size)
+  q_train_ids_path = q_train_path + (".ids%d" % en_vocab_size)
   data_to_token_ids(a_train_path, a_train_ids_path, a_vocab_path, tokenizer)
   data_to_token_ids(q_train_path , q_train_ids_path, q_vocab_path, tokenizer)
 
   # Create token ids for the development data.
-  a_dev_ids_path = a_dev_path + (".ids%d" % a_vocabulary_size)
-  q_dev_ids_path = q_dev_path + (".ids%d" % q_vocabulary_size)
+  a_dev_ids_path = a_dev_path + (".ids%d" % fr_vocab_size)
+  q_dev_ids_path = q_dev_path + (".ids%d" % en_vocab_size)
   data_to_token_ids(a_dev_path , a_dev_ids_path, a_vocab_path, tokenizer)
   data_to_token_ids(q_dev_path , q_dev_ids_path, q_vocab_path, tokenizer)
 

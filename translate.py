@@ -29,7 +29,7 @@ See the following papers for more information on neural translation models.
 """
 from __future__ import absolute_import
 from __future__ import division
-#from __future__ import logging.debug_function
+from __future__ import print_function
 
 import math
 import os
@@ -104,7 +104,7 @@ def read_data(source_path, target_path, max_size=None):
       while source and target and (not max_size or counter < max_size):
         counter += 1
         if counter % 1000 == 0:
-          logging.debug("  reading data line %d" % counter)
+          print("  reading data line %d" % counter)
           sys.stdout.flush()
         source_ids = [int(x) for x in source.split()]
         target_ids = [int(x) for x in target.split()]
@@ -134,10 +134,10 @@ def create_model(session, forward_only):
       dtype=dtype)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
-    logging.debug("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
-    logging.debug("Created model with fresh parameters.")
+    print("Created model with fresh parameters.")
     session.run(tf.global_variables_initializer())
   return model
 
@@ -145,20 +145,20 @@ def create_model(session, forward_only):
 def train():
   """Train a en->fr translation model using WMT data."""
   # Prepare WMT data.
-  logging.debug("Preparing WMT data in %s" % FLAGS.data_dir)
+  print("Preparing WMT data in %s" % FLAGS.data_dir)
   en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
       FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
 
   with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
     # Create model.
-    logging.debug("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+    print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
     model = create_model(sess, False)
 
     # Read data into buckets and compute their sizes.
-    logging.debug("Reading development and training data (limit: %d)."
+    print("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
     dev_set = read_data(en_dev, fr_dev)
-    logging.debug("Finish reading data")
+    print("Finish reading data")
     train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
@@ -173,7 +173,7 @@ def train():
     step_time, loss = 0.0, 0.0
     current_step = 0
     previous_losses = []
-    logging.debug( 'Started training')
+    print( 'Started training')
     while True:
       # Choose a bucket according to data distribution. We pick a random number
       # in [0, 1] and use the corresponding interval in train_buckets_scale.
@@ -193,15 +193,15 @@ def train():
       # Printing perplexity every 10 iterations for plotting
       if current_step % 10 == 0:
         perplexity10 = math.exp(float(loss)) if loss < 300 else float("inf")
-        logging.debug("Plot: global step %d learning rate %.4f step-time %.2f perplexity "
+        print("Plot: global step %d learning rate %.4f step-time %.2f perplexity "
                "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                          step_time, perplexity10))
 
-      # Once in a while, we save checkpoint, logging.debugstatistics, and run evals.
+      # Once in a while, we save checkpoint, printstatistics, and run evals.
       if current_step % FLAGS.steps_per_checkpoint == 0:
         # Print statistics for the previous epoch.
         perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-        logging.debug("global step %d learning rate %.4f step-time %.2f perplexity "
+        print("global step %d learning rate %.4f step-time %.2f perplexity "
                "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                          step_time, perplexity))
         # Decrease learning rate if no improvement was seen over last 3 times.
@@ -212,10 +212,10 @@ def train():
         checkpoint_path = os.path.join(FLAGS.train_dir, "ama.ckpt")
         model.saver.save(sess, checkpoint_path, global_step=model.global_step)
         step_time, loss = 0.0, 0.0
-        # Run evals on development set and logging.debugtheir perplexity.
+        # Run evals on development set and printtheir perplexity.
         for bucket_id in xrange(len(_buckets)):
           if len(dev_set[bucket_id]) == 0:
-            logging.debug("  eval: empty bucket %d" % (bucket_id))
+            print("  eval: empty bucket %d" % (bucket_id))
             continue
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
@@ -223,7 +223,7 @@ def train():
                                        target_weights, bucket_id, True)
           eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
               "inf")
-          logging.debug("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+          print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
 
 
@@ -269,8 +269,8 @@ def decode():
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
       # Print out French sentence corresponding to outputs.
-      logging.debug(" ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]))
-      logging.debug("> ", end="")
+      print(" ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]))
+      #print("> ", end="")
       sys.stdout.flush()
       sentence = sys.stdin.readline()
 
@@ -278,7 +278,7 @@ def decode():
 def self_test():
   """Test the translation model."""
   with tf.Session() as sess:
-    logging.debug("Self-test for neural translation model.")
+    print("Self-test for neural translation model.")
     # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
     model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
                                        5.0, 32, 0.3, 0.99, num_samples=8)

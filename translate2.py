@@ -192,12 +192,6 @@ def train():
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint
       current_step += 1
-      # Printing perplexity every 10 iterations for plotting
-      if current_step % 10 == 0:
-        perplexity10 = math.exp(float(loss)) if loss < 300 else float("inf")
-        print("Plot: global step %d learning rate %.4f step-time %.2f perplexity "
-               "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                         step_time, perplexity10))
 
       # Once in a while, we save checkpoint, printstatistics, and run evals.
       if current_step % FLAGS.steps_per_checkpoint == 0:
@@ -229,7 +223,7 @@ def train():
         sys.stdout.flush()
 
 
-def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outputs_file):
+def decode(data_encoder_inputs_file, gen_decoder_outputs_file):
   with tf.Session() as sess:
     # Create model and load parameters.
     model = create_model(sess, True)
@@ -243,9 +237,11 @@ def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outp
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
+    test_outputs_lst = []
+
     # Decode from encoder_inputs_file
-    with open(data_encoder_inputs_file) as fq, open(data_decoder_outputs_file,) as fa:
-      for sentence, data_response in izip(fq, fa):
+    with open(data_encoder_inputs_file) as fq:
+      for sentence in fq.readlines():
         while sentence:
           # Get token-ids for the input sentence.
           token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
@@ -256,13 +252,13 @@ def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outp
               bucket_id = i
               break
             else:
-              logging.warning("Sentence truncated: %s", sentence) 
+              logging.warning("Sentence truncated: %s", sentence)
 
           # Get a 1-element batch to feed the sentence to the model.
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
             {bucket_id: [(token_ids, [])]}, bucket_id)
           # Get output logits for the sentence.
-          _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
+          _, test_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
           # This is a greedy decoder - outputs are just argmaxes of output_logits.
           outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
@@ -270,14 +266,13 @@ def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outp
           if data_utils.EOS_ID in outputs:
             outputs = outputs[:outputs.index(data_utils.EOS_ID)]
           generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
-          # TODO: see train() for how to get step_loss (return arg2) from model.step() based on sentence (encoder input from data), data_response, generated_response?
-          # TODO: what is the relationship between "decoder_inputs" and data_response (from file) 
-          #_, loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-          #                         target_weights, bucket_id, False)
-          #perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-          #with open(gen_decoder_outputs_file, mode='w') as fo:
-          #  fo.write(generated_response + '\n')
+          ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
+          test_outputs_lst.append([generated_response, ppl_test, bucket_id])
 
+    # log generated response, ppl_test, bucket_id
+    with open(gen_decoder_outputs_file, mode='w') as fo:
+        for test_output in test_outputs:
+            fo.write('|'.join(test_output) + '\n')
 
 def self_test():
   """Test the translation model."""
@@ -303,7 +298,8 @@ def main(_):
   if FLAGS.self_test:
     self_test()
   elif FLAGS.decode:
-    decode()
+    # TODO: test if file exists first
+    decode('/home/ubuntu/data/test-q.txt', '/home/ubuntu/data/test-a.txt')
   else:
     train()
 

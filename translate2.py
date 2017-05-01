@@ -223,7 +223,7 @@ def train():
         sys.stdout.flush()
 
 
-def decode(data_encoder_inputs_file, gen_decoder_outputs_file):
+def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outputs_file):
   with tf.Session() as sess:
     # Create model and load parameters.
     model = create_model(sess, True)
@@ -240,38 +240,45 @@ def decode(data_encoder_inputs_file, gen_decoder_outputs_file):
     test_outputs_lst = []
 
     # Decode from encoder_inputs_file
-    with open(data_encoder_inputs_file) as fq:
-      for sentence in fq.readlines():
-        while sentence:
-          # Get token-ids for the input sentence.
-          token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
-          # Which bucket does it belong to?
-          bucket_id = len(_buckets) - 1
-          for i, bucket in enumerate(_buckets):
-            if bucket[0] >= len(token_ids):
-              bucket_id = i
-              break
-            else:
-              logging.warning("Sentence truncated: %s", sentence)
+    with open(data_encoder_inputs_file) as fq, open(data_decoder_outputs_file) as fa:
+      for sentence, data_response in izip(fq, fa):
+        # Get token-ids for the input sentence.
+        token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
+        # Get token ids for output sentence
+        token_ids_output = data_utils.sentence_to_token_ids(tf.compat.as_bytes(data_response), en_vocab)
 
-          # Get a 1-element batch to feed the sentence to the model.
-          encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-            {bucket_id: [(token_ids, [])]}, bucket_id)
-          # Get output logits for the sentence.
-          _, test_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
+        # Which bucket does it belong to?
+        bucket_id = len(_buckets) - 1
+        for i, bucket in enumerate(_buckets):
+          if bucket[0] >= len(token_ids):
+            bucket_id = i
+            break
+          else:
+            logging.warning("Sentence truncated: %s", sentence)
+       
+        # Get a 1-element batch to feed the sentence to the model.
+        encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+            {bucket_id: [(token_ids, token_ids_output)]}, bucket_id)
+
+        # Get output logits for the sentence.
+        _, test_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
-          # This is a greedy decoder - outputs are just argmaxes of output_logits.
-          outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-          # If there is an EOS symbol in outputs, cut them at that point.
-          if data_utils.EOS_ID in outputs:
-            outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-          generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
-          ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
-          test_outputs_lst.append([generated_response, ppl_test, bucket_id])
+        # This is a greedy decoder - outputs are just argmaxes of output_logits.
+        outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+        # If there is an EOS symbol in outputs, cut them at that point.
+        if data_utils.EOS_ID in outputs:
+          outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+        generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
+        ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
+        print("question:", sentence)
+        print("response:", generated_response)
+        print("ppl_test:", ppl_test)
+        print("bucket:", bucket_id)
+        test_outputs_lst.append([generated_response, str(ppl_test), str(bucket_id)])
 
     # log generated response, ppl_test, bucket_id
     with open(gen_decoder_outputs_file, mode='w') as fo:
-        for test_output in test_outputs:
+        for test_output in test_outputs_lst:
             fo.write('|'.join(test_output) + '\n')
 
 def self_test():
@@ -299,7 +306,7 @@ def main(_):
     self_test()
   elif FLAGS.decode:
     # TODO: test if file exists first
-    decode('/home/ubuntu/data/test-q.txt', '/home/ubuntu/data/test-a.txt')
+    decode('/home/ubuntu/data/test_q.txt', '/home/ubuntu/data/test_a.txt', '/home/ubuntu/data/test_results.txt')
   else:
     train()
 

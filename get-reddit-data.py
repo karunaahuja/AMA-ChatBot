@@ -114,7 +114,7 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file, trunc_wor
             question_answer_pairs_count = 0
             # get pair of submission title, top-voted top-level comment
             if len(top_level_comments) > 0:
-                if write_to_qa_files(question_top, answer_top, questions_file, answers_file, blacklist_ trunc_words_limit):
+                if write_to_qa_files(question_top, answer_top, questions_file, answers_file, blacklist, trunc_words_limit):
                     question_answer_pairs_count += 1
             # get all comment-reply pairs
             comment_queue = top_level_comments # Seed with top-level
@@ -161,7 +161,10 @@ def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name, trunc_w
         os.remove(answers_file)
 
     if subreddit_name == 'IAma':
-        num_submissions, qa_count = iama_question_answer_pairs(subreddit, questions_file, answers_file, trunc_words_limit)
+        num_submissions_sci, qa_count_sci = iama_question_answer_pairs(subreddit, 'flair:science', questions_file, answers_file, trunc_words_limit)
+        num_submissions_tech, qa_count_tech = iama_question_answer_pairs(subreddit, 'flair:science', questions_file, answers_file, trunc_words_limit)
+        num_submissions = num_submission_sci + num_submissions_tech
+        qa_count = qa_count_sci + qa_count_tech
     else:
         num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file, trunc_words_limit)
     print(num_submissions, qa_count)

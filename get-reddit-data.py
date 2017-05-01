@@ -3,7 +3,7 @@
 import sys
 import praw
 import string
-#import json
+import os
 #import logging
 
 # uncomment to turn on logging and debug PRAW requests to Reddit API
@@ -12,8 +12,6 @@ import string
 # logger = logging.getLogger('prawcore')
 # logger.setLevel(logging.DEBUG)
 # logger.addHandler(handler)
-
-TRUNC_WORDS_LIMIT = 50
 
 def replace_newlines(content):
     return content.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ').replace('-', ' ')
@@ -29,13 +27,14 @@ def normalize(content):
     content = ''.join([ch for ch in content if ch not in string.punctuation])
     return content.lower()
 
-def write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+def write_to_qa_files(question, answer, questions_file, answers_file, blacklist, trunc_words_limit=None):
     if question not in blacklist and answer not in blacklist:
         # replace all newlines with space
         question = replace_newlines(question)
         answer = replace_newlines(answer)
-        question = truncate(question, TRUNC_WORDS_LIMIT)
-        answer = truncate(answer, TRUNC_WORDS_LIMIT)
+        if trunc_words_limit is not None:
+            question = truncate(question, trunc_words_limit)
+            answer = truncate(answer, trunc_words_limit)
         question = normalize(question)
         answer= normalize(answer)
         # write question and answer to separate text files, one per line
@@ -46,14 +45,54 @@ def write_to_qa_files(question, answer, questions_file, answers_file, blacklist)
         return True
     return False
 
-def get_question_answer_pairs(subreddit, questions_file, answers_file):
+def iama_question_answer_pairs(subreddit, query_str, questions_file, answers_file, trunc_words_limit=None):
     blacklist = set(['[deleted]', '[removed]'])
 
     # get submissions in a subreddit
     submission_count = 0
     total_qa_count = 0
+    # sort by: relevance, hot, top, new, or comments
+    submissions = subreddit.search(syntax='lucene', query=query_str, sort='comments', limit=1000)
+    while True:
+        try:
+            submission = next(submissions)
+            submission.comments.replace_more(limit=0)
+            top_level_comments = list(submission.comments)
+        except StopIteration:
+            break
+        except Exception as e:
+            print(e)
+            continue
+        else:
+            submission_count += 1
+            if submission_count % 100 == 0:
+                print(total_qa_count, submission_count, submission.title)
+
+            submission_author = submission.author
+            question_answer_pairs_count = 0
+
+            for tl_comment in top_level_comments:
+                question_author = tl_comment.author
+                question = tl_comment.body
+
+                # select pairs of comments where the reply author is the submission author (the "expert")
+                for reply in tl_comment.replies:
+                    answer_author = reply.author
+                    if answer_author == submission_author:
+                        answer = reply.body
+                        if write_to_qa_files(question, answer, questions_file, answers_file, blacklist, trunc_words_limit):
+                            question_answer_pairs_count += 1
+            total_qa_count += question_answer_pairs_count
+    return submission_count, total_qa_count
+
+def get_question_answer_pairs(subreddit, questions_file, answers_file, trunc_words_limit=None):
+    blacklist = set(['[deleted]', '[removed]'])
+
+    # get submissions in a subreddit
+    submission_count = 0
+    total_qa_count = 0
+    # get all submissions available
     submissions = subreddit.submissions(start=0)
-    # for submission in subreddit.submissions(start=0):
     while True:
         try:
             submission = next(submissions)
@@ -73,8 +112,9 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
             if submission_count % 100 == 0:
                 print(total_qa_count, submission_count, submission.title)
             question_answer_pairs_count = 0
+            # get pair of submission title, top-voted top-level comment
             if len(top_level_comments) > 0:
-                if write_to_qa_files(question_top, answer_top, questions_file, answers_file, blacklist):
+                if write_to_qa_files(question_top, answer_top, questions_file, answers_file, blacklist_ trunc_words_limit):
                     question_answer_pairs_count += 1
             # get all comment-reply pairs
             comment_queue = top_level_comments # Seed with top-level
@@ -85,7 +125,7 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
                 if len(comment.replies) > 0:
                     top_reply = comment.replies[0]
                     answer = top_reply.body
-                    if write_to_qa_files(question, answer, questions_file, answers_file, blacklist):
+                    if write_to_qa_files(question, answer, questions_file, answers_file, blacklist, trunc_words_limit):
                         question_answer_pairs_count += 1
 
             total_qa_count += question_answer_pairs_count
@@ -93,7 +133,7 @@ def get_question_answer_pairs(subreddit, questions_file, answers_file):
     return submission_count, total_qa_count
 
 
-def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name):
+def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name, trunc_words_limit):
 
     my_cli_id = reddit_cli_id
     my_cli_secret = reddit_cli_secret
@@ -113,22 +153,30 @@ def main(reddit_uname, reddit_cli_id, reddit_cli_secret, subreddit_name):
 
     print(subreddit.display_name)  # Output: redditdev
     print(subreddit.title)         # Output: reddit Development
-    # print(subreddit.description)   # Output: A subreddit for discussion of ...
 
-    # TODO: check if questions_file, answers_file already exist, if so delete them
+    # delete output files if they already exist
+    if os.path.isfile(questions_file):
+        os.remove(questions_file)
+    if os.path.isfile(answers_file):
+        os.remove(answers_file)
 
-    num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file)
+    if subreddit_name == 'IAma':
+        num_submissions, qa_count = iama_question_answer_pairs(subreddit, questions_file, answers_file, trunc_words_limit)
+    else:
+        num_submissions, qa_count = get_question_answer_pairs(subreddit, questions_file, answers_file, trunc_words_limit)
     print(num_submissions, qa_count)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 5:
-        print('usage: python3 reddit-allpairs.py <reddit username> <reddit OAuth client ID> <reddit OAuth secret> <subreddit name>')
-    else:
+    if len(sys.argv) < 5:
+        print('usage: python3 reddit-allpairs.py <reddit username> <reddit OAuth client ID> <reddit OAuth secret> <subreddit name> [truncate words limit]')
+        sys.exit(1)
+    elif len(sys.argv) >= 5:
         reddit_name = sys.argv[1]
         reddit_id = sys.argv[2]
         reddit_secret = sys.argv[3]
         subreddit_name = sys.argv[4]
-        main(reddit_name, reddit_id, reddit_secret, subreddit_name)
-
-
+        trunc_words_limit = None
+    if len(sys.argv) >= 6:
+        trunc_words_limit = sys.argv[5]
+    main(reddit_name, reddit_id, reddit_secret, subreddit_name, trunc_words_limit)
 

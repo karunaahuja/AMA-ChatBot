@@ -39,6 +39,7 @@ import time
 import logging
 
 import gensim
+import language_check
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -46,6 +47,8 @@ import tensorflow as tf
 
 import data_utils
 import seq2seq_model
+
+from itertools import izip
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -55,12 +58,12 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size", 1,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 512, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("en_vocab_size", 50000, "Question vocabulary size.")
 tf.app.flags.DEFINE_integer("fr_vocab_size", 50000, "Answer vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/home/ubuntu/data", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/home/ubuntu/checkpoints_embed", "Training directory.")
+tf.app.flags.DEFINE_string("train_dir", "/home/ubuntu/checkpoints", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
@@ -78,8 +81,8 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 _buckets = [(5, 10), (10, 15), (20, 25), (40, 50),(55,65), (70,90) ]
 
-logging.basicConfig(filename='new_3layers_lr_0_1_embed.log',level=logging.DEBUG)
-
+logging.basicConfig(filename='new_3layers_lr_0_1_1024.log',level=logging.DEBUG)
+tool = language_check.LanguageTool('en-US')
 
 def read_data(source_path, target_path, max_size=None):
   """Read data from source and target files and put into buckets.
@@ -123,14 +126,14 @@ def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
   dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
   # load word2vec model
-  model_embed = gensim.models.KeyedVectors.load_word2vec_format('/home/ubuntu/GoogleNews-vectors-negative300.bin', binary=True)  
+  #model_embed = gensim.models.KeyedVectors.load_word2vec_format('/home/ubuntu/GoogleNews-vectors-negative300.bin', binary=True)  
   #model_embed = load_model('', binary=True)
   #X = tf.Variable([0.0])
-  #print(type(X)) # numpy.ndarray
-  #print(X.shape) # (vocab_size, embedding_dim)
+  #logging.debug(type(X)) # numpy.ndarray
+  #logging.debug(X.shape) # (vocab_size, embedding_dim)
   # set embeddings
-  place = tf.placeholder(tf.float32, shape=(3000000, 300))
-  X = tf.Variable(place) 
+  #place = tf.placeholder(tf.float32, shape=(3000000, 300))
+  #X = tf.Variable(place) 
   #embeddings = X.assign(place)
   #embeddings = tf.Variable(tf.random_uniform(X.shape, minval=-0.1, maxval=0.1), trainable=False)
   model = seq2seq_model.Seq2SeqModel(
@@ -151,10 +154,10 @@ def create_model(session, forward_only):
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
     logging.debug("Created model with fresh parameters.")
-    init = tf.initialize_all_variables()
-    #session.run(tf.global_variables_initializer())
+    #init = tf.initialize_all_variables()
+    session.run(tf.global_variables_initializer())
     # override inits
-    session.run(init,feed_dict={place: model_embed.syn0} )
+   # session.run(init,feed_dict={place: model_embed.syn0} )
   return model
 
 
@@ -242,12 +245,12 @@ def train():
           logging.debug("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
 
-def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outputs_file):
+def decode_test(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outputs_file):
   with tf.Session() as sess:
     # Create model and load parameters.
     model = create_model(sess, True)
     model.batch_size = 1  # We decode one sentence at a time.
-
+    
     # Load vocabularies.
     en_vocab_path = os.path.join(FLAGS.data_dir,
                                  "vocab%d.q" % FLAGS.en_vocab_size)
@@ -256,49 +259,69 @@ def decode(data_encoder_inputs_file, data_decoder_outputs_file, gen_decoder_outp
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
+    sentences_lst = []
+    data_response_lst = []
     test_outputs_lst = []
 
     # Decode from encoder_inputs_file
     with open(data_encoder_inputs_file) as fq, open(data_decoder_outputs_file) as fa:
       for sentence, data_response in izip(fq, fa):
-        # Get token-ids for the input sentence.
-        token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
-        # Get token ids for output sentence
-        token_ids_output = data_utils.sentence_to_token_ids(tf.compat.as_bytes(data_response), en_vocab)
+        sentences_lst.append(sentence)
+        data_response_lst.append(data_response)
 
-        # Which bucket does it belong to?
-        bucket_id = len(_buckets) - 1
-        for i, bucket in enumerate(_buckets):
-          if bucket[0] >= len(token_ids):
-            bucket_id = i
-            break
-          else:
-            logging.warning("Sentence truncated: %s", sentence)
+    for j in range(len(sentences_lst)):
+      sentence = sentences_lst[j]
+      data_response = data_response_lst[j]
+      # Get token-ids for the input sentence.
+      token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
+      # Get token ids for output sentence
+      token_ids_output = data_utils.sentence_to_token_ids(tf.compat.as_bytes(data_response), en_vocab)
+
+      # Which bucket does it belong to?
+      bucket_id = len(_buckets) - 1
+      for i, bucket in enumerate(_buckets):
+        if bucket[0] >= len(token_ids):
+          bucket_id = i
+          break
+        else:
+          logging.warning("Sentence truncated: %s", sentence)
        
-        # Get a 1-element batch to feed the sentence to the model.
-        encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+      # Get a 1-element batch to feed the sentence to the model.
+      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
             {bucket_id: [(token_ids, token_ids_output)]}, bucket_id)
 
-        # Get output logits for the sentence.
-        _, test_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
+      # Get output logits for the sentence.
+      _, test_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
-        # This is a greedy decoder - outputs are just argmaxes of output_logits.
-        outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-        # If there is an EOS symbol in outputs, cut them at that point.
-        if data_utils.EOS_ID in outputs:
-          outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-        generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
-        ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
-        print("question:", sentence)
-        print("response:", generated_response)
-        print("ppl_test:", ppl_test)
-        print("bucket:", bucket_id)
-        test_outputs_lst.append([generated_response, str(ppl_test), str(bucket_id)])
+      # This is a greedy decoder - outputs are just argmaxes of output_logits.
+      outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+      # If there is an EOS symbol in outputs, cut them at that point.
+      if data_utils.EOS_ID in outputs:
+        outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+      generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
+      ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
+      # correct grammar
+      matches = tool.check(generated_response)
+      grammar_corrected_response = language_check.correct(generated_response, matches)
+
+#      logging.debug("question:", sentence)
+#      logging.debug("response:", generated_response)
+#      logging.debug("grammar corrected response: " ,grammar_corrected_response) 
+#      logging.debug("ppl_test:", ppl_test)
+#      logging.debug("bucket:", bucket_id)
+      test_outputs_lst.append([grammar_corrected_response, str(ppl_test), str(bucket_id)])
+      if j % 100 == 0: 
+        logging.debug(j, "/", len(sentences_lst))
+        # log generated response, ppl_test, bucket_id
+        with open(gen_decoder_outputs_file, mode='a') as fo:
+          for test_output in test_outputs_lst:
+            fo.write('|'.join(test_output) + '\n')
+        test_outputs_lst = []
 
     # log generated response, ppl_test, bucket_id
-    with open(gen_decoder_outputs_file, mode='w') as fo:
-        for test_output in test_outputs_lst:
-            fo.write('|'.join(test_output) + '\n')
+#    with open(gen_decoder_outputs_file, mode='w') as fo:
+#      for test_output in test_outputs_lst:
+#        fo.write('|'.join(test_output) + '\n')
 
 def decode():
   with tf.Session() as sess:
@@ -312,7 +335,7 @@ def decode():
     fr_vocab_path = os.path.join(FLAGS.data_dir,
                                  "vocab%d.a" % FLAGS.fr_vocab_size)
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
-    _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
+    fr_vocab, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
     # Decode from standard input.
     sys.stdout.write("enter question> ")
@@ -325,7 +348,7 @@ def decode():
       # Get token-ids for the input sentence.
       token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
       # Get token ids for output sentence
-      token_ids_output = data_utils.sentence_to_token_ids(tf.compat.as_bytes(data_response), en_vocab)
+      token_ids_output = data_utils.sentence_to_token_ids(tf.compat.as_bytes(data_response), fr_vocab)
       # Which bucket does it belong to?
       bucket_id = len(_buckets) - 1
       for i, bucket in enumerate(_buckets):
@@ -343,15 +366,18 @@ def decode():
                                        target_weights, bucket_id, True)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
       outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-      # If there is an EOS symbol in outputs, cut them at that point.
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+      generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]) 
+      matches = tool.check(generated_response)
+      grammar_corrected_response = language_check.correct(generated_response, matches) 
+     # If there is an EOS symbol in outputs, cut them at that point.
       # Print out French sentence corresponding to outputs.
-      generated_response = " ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs])
       ppl_test = math.exp(float(test_loss)) if test_loss < 300 else float("inf")
-      print("generated response:", generated_response)
-      print("ppl_test:", ppl_test)
-      print("bucket:", bucket_id)
+      logging.debug("generated response:", generated_response)
+      logging.debug ("grammar corrected response: ", grammar_corrected_response)
+      logging.debug("ppl_test:", ppl_test)
+      logging.debug("bucket:", bucket_id)
 
       sys.stdout.write("enter question> ")
       sys.stdout.flush()
@@ -385,8 +411,8 @@ def main(_):
   if FLAGS.self_test:
     self_test()
   elif FLAGS.decode:
-    # decode('/home/ubuntu/data/test_q.txt', '/home/ubuntu/data/test_a.txt', '/home/ubuntu/data/test_results.txt')
-    decode()
+    decode_test('/home/ubuntu/data/test_q.txt', '/home/ubuntu/data/test_a.txt', '/home/ubuntu/data/test_results.txt')
+    # decode()
   else:
     train()
 

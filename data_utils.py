@@ -193,7 +193,7 @@ def initialize_vocabulary(vocabulary_path):
 
 
 def sentence_to_token_ids(sentence, vocabulary,
-                          tokenizer=None, normalize_digits=True):
+                          tokenizer=None, normalize_digits=False):
   """Convert a string to list of integers representing token-ids.
 
   For example, a sentence "I have a dog" may become tokenized into
